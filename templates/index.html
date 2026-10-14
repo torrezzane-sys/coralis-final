@@ -1,0 +1,198 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>C.O.R.A.L.I.S. Control Center</title>
+    <!-- Leaflet CSS for the map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { 
+            background-color: #0b0f19; 
+            color: #f8fafc; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+        }
+        .header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 20px; 
+            border-bottom: 1px solid #1e293b; 
+            padding-bottom: 15px; 
+        }
+        h1 { color: #38bdf8; font-size: 22px; margin: 0; letter-spacing: 1px; }
+        .status-badge { background-color: #065f46; color: #34d399; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; }
+        
+        /* Dashboard Grid Layout */
+        .dashboard-grid { 
+            display: grid; 
+            grid-template-columns: 1.2fr 1fr 1fr; 
+            gap: 20px; 
+        }
+        .card { 
+            background-color: #111827; 
+            border: 1px solid #1f2937; 
+            border-radius: 12px; 
+            padding: 18px; 
+            box-shadow: 0 4px 6px rgba(0,0,0,0.4); 
+        }
+        .card h3 { margin-top: 0; color: #9ca3af; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        /* Video Card */
+        .video-card { grid-column: 1 / 2; grid-row: 1 / 3; display: flex; flex-direction: column; }
+        .video-container { width: 100%; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 15px; }
+        img { width: 100%; display: block; border-radius: 8px; }
+
+        /* Motor Control Grid */
+        .motor-controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: auto; }
+        .motor-btn { 
+            background-color: #1e293b; 
+            color: #38bdf8; 
+            border: 1px solid #334155; 
+            padding: 12px; 
+            border-radius: 8px; 
+            font-weight: bold; 
+            text-align: center;
+        }
+        .active-btn { background-color: #38bdf8 !important; color: #0b0f19 !important; }
+        .btn-stop { background-color: #7f1d1d; color: #fca5a5; border-color: #991b1b; }
+
+        /* Metric Cards */
+        .metric-card { grid-column: span 1; }
+        .value { font-size: 28px; font-weight: bold; color: #38bdf8; margin-top: 8px; }
+        .subtext { font-size: 12px; margin-top: 6px; }
+
+        /* Map Card */
+        .map-card { grid-column: 3 / 4; grid-row: 2 / 3; display: flex; flex-direction: column; }
+        #map { flex-grow: 1; min-height: 240px; width: 100%; border-radius: 8px; margin-top: 8px; }
+        .gps-coords { font-size: 12px; color: #94a3b8; font-family: monospace; background: #1f2937; padding: 4px 8px; border-radius: 4px; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>C.O.R.A.L.I.S. Control Center</h1>
+        <div class="status-badge">SYSTEM ONLINE</div>
+    </div>
+    
+    <div class="dashboard-grid">
+        <!-- Live AI Video Stream + Motor Controls -->
+        <div class="card video-card">
+            <h3>Live FPV Camera Stream</h3>
+            <div class="video-container">
+                <img src="{{ url_for('video_feed') }}" alt="Live Feed">
+            </div>
+            
+            <h3>Motor Control Deck (Arrow Keys Active)</h3>
+            <div class="motor-controls">
+                <div></div>
+                <div id="btn-forward" class="motor-btn">▲ FORWARD</div>
+                <div></div>
+                <div id="btn-left" class="motor-btn">◀ LEFT</div>
+                <div id="btn-stop" class="motor-btn btn-stop">■ STOP</div>
+                <div id="btn-right" class="motor-btn">RIGHT ▶</div>
+                <div></div>
+                <div id="btn-backward" class="motor-btn">▼ REVERSE</div>
+                <div></div>
+            </div>
+        </div>
+
+        <!-- Sensor Card 1: pH Level -->
+        <div class="card metric-card">
+            <h3>Water pH Level</h3>
+            <div class="value" id="ph">--</div>
+            <p class="subtext" style="color: #34d399;">● Optimal (6.5 - 8.5)</p>
+        </div>
+
+        <!-- Sensor Card 2: Turbidity -->
+        <div class="card metric-card">
+            <h3>Water Turbidity</h3>
+            <div class="value" id="turbidity">-- NTU</div>
+            <p class="subtext" style="color: #94a3b8;">● Clarity Monitor</p>
+        </div>
+
+        <!-- Sensor Card 3: Temperature -->
+        <div class="card metric-card" style="grid-column: 2 / 3; grid-row: 2 / 3;">
+            <h3>Water Temperature</h3>
+            <div class="value" id="temp" style="color: #fbbf24;">-- °C</div>
+            <p class="subtext" style="color: #94a3b8;">● Thermal Sensor</p>
+        </div>
+
+        <!-- GPS Map Card -->
+        <div class="card map-card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3>Live GPS Location</h3>
+                <span id="gps-text" class="gps-coords">LAT: -- | LNG: --</span>
+            </div>
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS & Keyboard Listener Script -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let currentAction = 'stop';
+        let isHolding = false;
+
+        function sendMotor(action) {
+            if (currentAction === action) return; // Prevent spamming requests while holding
+            currentAction = action;
+
+            // Highlight active button UI
+            document.querySelectorAll('.motor-btn').forEach(b => b.classList.remove('active-btn'));
+            if(action === 'forward') document.getElementById('btn-forward').classList.add('active-btn');
+            if(action === 'backward') document.getElementById('btn-backward').classList.add('active-btn');
+            if(action === 'left') document.getElementById('btn-left').classList.add('active-btn');
+            if(action === 'right') document.getElementById('btn-right').classList.add('active-btn');
+            if(action === 'stop') document.getElementById('btn-stop').classList.add('active-btn');
+
+            fetch('/control', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action })
+            })
+            .then(response => response.json())
+            .then(data => console.log("Motor command:", data.action));
+        }
+
+        // Listen for keyboard key presses (Arrow Keys)
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') { sendMotor('forward'); }
+            else if (e.key === 'ArrowDown') { sendMotor('backward'); }
+            else if (e.key === 'ArrowLeft') { sendMotor('left'); }
+            else if (e.key === 'ArrowRight') { sendMotor('right'); }
+        });
+
+        // Listen for when keys are released to instantly stop motors
+        window.addEventListener('keyup', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                sendMotor('stop');
+            }
+        });
+
+        // Map setup
+        let map = L.map('map').setView([8.2279, 124.2453], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+        let marker = L.marker([8.2279, 124.2453]).addTo(map);
+
+        setInterval(() => {
+            fetch('/data')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('ph').innerText = data.ph;
+                    document.getElementById('turbidity').innerText = data.turbidity + " NTU";
+                    document.getElementById('temp').innerText = data.temperature + " °C";
+                    
+                    let lat = data.gps.latitude;
+                    let lon = data.gps.longitude;
+                    document.getElementById('gps-text').innerText = `LAT: ${lat.toFixed(4)} | LNG: ${lon.toFixed(4)}`;
+                    
+                    let newLatLng = new L.LatLng(lat, lon);
+                    marker.setLatLng(newLatLng);
+                    map.panTo(newLatLng);
+                });
+        }, 1000);
+    </script>
+</body>
+</html>
